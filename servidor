@@ -10,7 +10,7 @@ def validar_nome(nome):
     return re.fullmatch(br'[a-zA-Z][a-zA-Z0-9_-]*', nome) is not None
 
 def responder_ping(conexao, conteudo):
-    conexao.enviar(b':server PONG server :' + conteudo)
+    conexao.enviar(b':server PONG server :' + conteudo + b'\r\n')
 
 def mensagem_bem_vindo(conexao, nick):
     conexao.enviar(b':server 001 %s :Welcome\r\n' % nick)
@@ -92,24 +92,18 @@ def dados_recebidos(conexao, dados):
     if dados == b'':
         return sair(conexao)
 
-    mensagens = re.split(rb'(?<=\r\n)', dados)
-    for linha in mensagens:
-        if not linha:
-            continue
+    conexao.aux += dados  # acumula dados recebidos
 
-        if not linha.endswith(b'\r\n'):
-            conexao.aux += linha
-            continue
+    while b'\r\n' in conexao.aux:
+        linha, conexao.aux = conexao.aux.split(b'\r\n', 1)
+        linha = linha.strip()
 
-        comando = conexao.aux + linha
-        conexao.aux = b''
-
-        if comando.startswith(b'PING '):
-            conteudo = comando[5:-2]
+        if linha.startswith(b'PING '):
+            conteudo = linha[5:]
             responder_ping(conexao, conteudo)
 
-        elif comando.startswith(b'NICK '):
-            nick = comando[5:-2]
+        elif linha.startswith(b'NICK '):
+            nick = linha[5:]
             if not validar_nome(nick):
                 erro_nick_invalido(conexao, nick)
             elif nick.lower() in nicklist:
@@ -117,8 +111,8 @@ def dados_recebidos(conexao, dados):
             else:
                 definir_nick(conexao, nick)
 
-        elif comando.startswith(b'PRIVMSG '):
-            resto = comando[8:-2]
+        elif linha.startswith(b'PRIVMSG '):
+            resto = linha[8:]
             if b' :' in resto:
                 destino, msg = resto.split(b' :', 1)
                 if destino.startswith(b'#'):
@@ -126,17 +120,17 @@ def dados_recebidos(conexao, dados):
                 else:
                     enviar_privmsg_usuario(conexao, destino, msg)
 
-        elif comando.startswith(b'JOIN '):
-            canal = comando[5:-2]
+        elif linha.startswith(b'JOIN '):
+            canal = linha[5:]
             if canal.startswith(b'#') and validar_nome(canal[1:]):
                 entrar_canal(conexao, canal[1:])
 
-        elif comando.startswith(b'PART '):
-            canal = comando[5:-2]
+        elif linha.startswith(b'PART '):
+            canal = linha[5:]
             if canal.startswith(b'#'):
                 sair_canal(conexao, canal[1:])
 
-        print(f'{conexao} >> {comando.strip()}')
+        print(f'{conexao} >> {linha}')
 
 def conexao_aceita(conexao):
     conexao.nick = b''
